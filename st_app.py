@@ -13,37 +13,12 @@ st.set_page_config(layout="wide")
 ## Functions
 def hierarchy_pos(G, root=None, width=1., vert_gap = 0.2, vert_loc = 0, xcenter = 0.5):
 
-    '''
-    From Joel's answer at https://stackoverflow.com/a/29597209/2966723.  
-    Licensed under Creative Commons Attribution-Share Alike 
-    
-    If the graph is a tree this will return the positions to plot this in a 
-    hierarchical layout.
-    
-    G: the graph (must be a tree)
-    
-    root: the root node of current branch 
-    - if the tree is directed and this is not given, 
-      the root will be found and used
-    - if the tree is directed and this is given, then 
-      the positions will be just for the descendants of this node.
-    - if the tree is undirected and not given, 
-      then a random choice will be used.
-    
-    width: horizontal space allocated for this branch - avoids overlap with other branches
-    
-    vert_gap: gap between levels of hierarchy
-    
-    vert_loc: vertical location of root
-    
-    xcenter: horizontal location of root
-    '''
     if not nx.is_tree(G):
         raise TypeError('cannot use hierarchy_pos on a graph that is not a tree')
 
     if root is None:
         if isinstance(G, nx.DiGraph):
-            root = next(iter(nx.topological_sort(G)))  #allows back compatibility with nx version 1.11
+            root = next(iter(nx.topological_sort(G))) 
         else:
             root = random.choice(list(G.nodes))
 
@@ -288,18 +263,20 @@ def find_realization(alpha=0,beta=64,k=2):
         
     return T_alpha,T_beta
 
-def unfolding_weighted_tree(T,v,root_of_branch,number_of_copies=0):
+def unfolding_weighted_tree(T,root_of_branch,number_of_copies=0):
     if number_of_copies>0:
+        st.write()
+        v = nx.shortest_path(T,root_of_branch,0)[1]
         s=number_of_copies
         edge_weight = T[v][root_of_branch]['weight']
         T_aux=T.copy()
         T_aux.remove_node(v)
         branch_nodes = list(nx.shortest_path(T_aux,root_of_branch).keys())
         branchies_copies = T_aux.subgraph(branch_nodes).copy()
-        new_subroots = [root_of_branch*10**l for l in range(s+1)]
+        new_subroots = [root_of_branch*100000**l for l in range(s+1)]
         for l in range(s):
             branch_copy = T_aux.subgraph(branch_nodes).copy() 
-            mapping_labels = {node:node*10**(l+1) for node in branch_nodes}
+            mapping_labels = {node:node*100000**(l+1) for node in branch_nodes}
             branch_copy = nx.relabel_nodes(branch_copy, mapping_labels)
             branchies_copies = nx.union(branchies_copies,branch_copy)
         T.remove_nodes_from(branch_nodes)
@@ -323,19 +300,22 @@ st.sidebar.markdown('<p class="big-font">Theorem 4.4 parameters:</p>', unsafe_al
 
 alpha = st.sidebar.number_input("Alpha", min_value=None, max_value=None,value=0,step=1)
 beta = st.sidebar.number_input("Beta", min_value=None, max_value=None,value=64,step=1)
-diameter = st.sidebar.number_input("Diameter", min_value=1, max_value=19,step=2)
+diameter = st.sidebar.number_input("Diameter", min_value=1, max_value=19,step=1)
 
 run = st.sidebar.button("Set Parameters")
 if run:
-    M1,M2 = find_realization(alpha=alpha,beta=beta,k=int((diameter+1)/2))
+    k = math.ceil((diameter)/2)
+    M1,M2 = find_realization(alpha=alpha,beta=beta,k=k)
+   
     M1 = nx.convert_node_labels_to_integers(M1,first_label=0)
+    if diameter%2==0:
+        M1 = unfolding_weighted_tree(M1,2**(k-1),number_of_copies=1)
+        M1 = nx.convert_node_labels_to_integers(M1,first_label=0)
 
     if 'graph' not in st.session_state:
         st.session_state['graph'] = M1
     else:
         st.session_state['graph'] = M1
-
-
 
 if 'graph' in st.session_state:
 
@@ -350,18 +330,19 @@ if 'graph' in st.session_state:
     #node_label = st.sidebar.selectbox("Show inside nodes", ["Index","Weights","None"])
 
     show_matrix = st.sidebar.selectbox("Matrix of Weights", ["Hide","Show"])
-    make_unfolding = st.checkbox("Make branch duplications")
 
+    st.sidebar.markdown('<p class="big-font">Branch duplication:</p>', unsafe_allow_html=True)
+    make_unfolding = st.sidebar.checkbox("Make branch duplications")
     if make_unfolding:
-        col1,col2,col3,col4 = st.columns(4)
-        number_of_copies = col1.number_input("Number of branch copies",min_value=1,step=1)
-        v = col2.number_input("Vertex that will be removed for duplication",min_value=0,max_value=len(M1.nodes)-1)
-        root_of_branch = col3.number_input("Root of the branch",min_value=0,max_value=len(M1.nodes)-1)
-        make_duplication = col4.button("Make branch duplication")
 
-        if make_duplication:
-            M1 = unfolding_weighted_tree(M1,v,root_of_branch,number_of_copies=number_of_copies)
-            M1 = nx.convert_node_labels_to_integers(M1,first_label=1)
+        with st.form(key ='Form'):
+            form1,form2=st.columns(2)
+            number_of_copies = form1.number_input("Number of branch copies",min_value=1,step=1)
+            root_of_branch = form2.number_input("Root of the branch",min_value=1,max_value=len(M1.nodes)-1)
+            submit = st.form_submit_button(label = 'Make branch duplication')
+        if submit:
+            M1 = unfolding_weighted_tree(M1,root_of_branch,number_of_copies=number_of_copies)
+            M1 = nx.convert_node_labels_to_integers(M1,first_label=0)
             st.session_state['graph'] = M1
 
 
@@ -391,7 +372,7 @@ if 'graph' in st.session_state:
             distinct_spectrum += "{}, ".format(eigenvalue)
 
     distinct_spectrum = distinct_spectrum[:-2]
-    st.header("DSpec(M1)={{{}}}".format(distinct_spectrum))
+    st.header("DSpec(M1)={{{}}}, |DSpec(M1)|={}".format(distinct_spectrum,len(dspec)))
 
 
 
@@ -432,7 +413,6 @@ if 'graph' in st.session_state:
 
         matrix = compute_eigenvalues(M1)[0]
 
-        st.write(len(matrix))
         dataframe_matrix = pd.DataFrame(matrix).astype(int)
 
         edges = list(M1.edges)
